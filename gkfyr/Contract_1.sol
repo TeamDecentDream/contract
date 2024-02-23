@@ -2,8 +2,8 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 contract NZFToken is ERC20, Ownable {
@@ -15,8 +15,9 @@ contract NZFToken is ERC20, Ownable {
     uint256 public constant MINT_LIMIT_PER_INVESTOR = 20_000 * (10**18);
 
     // USDT 컨트랙트 주소
-    IERC20 public USDT = IERC20(0xf7ADDb930777E11b83A5E7494421Ec4C589d0317);
+    // TestUSDTContractAddress = 0xf7ADDb930777E11b83A5E7494421Ec4C589d0317
     address public developerWallet;
+    address public USDTAddress;
 
 
     // 개인지갑 별 토큰 발행량
@@ -36,35 +37,31 @@ contract NZFToken is ERC20, Ownable {
     }
 
     // 컨트랙트 배포와 동시에 개발자 물량 발행
-    constructor(address _developerWallet) ERC20("NZF Token", "NZF") Ownable(_developerWallet) {
+    constructor(address _developerWallet, address _USDTAddress) ERC20("NZF Token", "NZF") Ownable(_developerWallet) {
         developerWallet = _developerWallet;
+        USDTAddress = _USDTAddress;
         _mint(developerWallet, DEVELOPER_SUPPLY);
     }
 
-    // 투자자 민팅 함수 (작동 안됨, 수정해야 함)
+    // 투자자 민팅 함수
     function mintInvestor(uint256 amount) external canMint(amount) {
         require(amount <= MINT_LIMIT_PER_INVESTOR, "Exceeds mint limit per investor");
         require(mintedTokens[msg.sender] + amount <= MINT_LIMIT_PER_INVESTOR, "Exceeds mint limit for the investor");
+        require(IERC20(USDTAddress).allowance(msg.sender, address(this)) >= amount, "You must approve the contract to access your USDT");
         
-        // bool approvalSuccess = USDT.approve(address(this), amount);
-        // require(approvalSuccess, "Token approval failed");
-
-        //safeTransferFrom이 return하는 값이 없어서 일단 transferFrom으로 작성함
-        bool transferSuccess = USDT.transferFrom(msg.sender, address(this), amount);
-        require(transferSuccess, "Token transfer failed");
+        IERC20(USDTAddress).safeTransferFrom(msg.sender, address(this), amount);
         
-
         _mint(msg.sender, amount);
         mintedTokens[msg.sender] += amount;
 
         emit InvestorMint(msg.sender, amount);
     }
 
-    //
+    // 개발자 USDT 회수 함수
     function withdraw() external onlyDeveloper {
-        uint256 developerBalance = balanceOf(developerWallet);
-        require(developerBalance > 0, "No tokens to withdraw");
+        uint256 contractBalance = IERC20(USDTAddress).balanceOf(address(this));
+        require(contractBalance > 0, "No tokens to withdraw");
 
-        _transfer(developerWallet, owner(), developerBalance);
+        IERC20(USDTAddress).transfer(developerWallet, contractBalance);
     }
 }
